@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Environment variables
+.env
+
+# Data
+data/raw/*
+data/processed/*
+
+# Models
+models/*
+
+# MLflow
+mlruns/
+
+# Frontend
+node_modules/
+dist/
+build/
+
+# macOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
