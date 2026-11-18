@@ -28,16 +28,23 @@ def test_ml_service_health():
 
 
 def test_ml_planet_input():
-    response = ml_client.post(
-        "/planet/input-check",
-        json={
-            "planet_radius": 1.2,
-            "planet_mass": 1.5,
-            "equilibrium_temperature": 280,
-            "orbital_period": 365,
-            "insolation_flux": 1.0
-        }
-    )
+    with TestClient(ml_app) as client:
+        response = client.post(
+            "/planet/predict",
+            json={
+                "planet_radius": 1.2,
+                "equilibrium_temperature": 280,
+                "insolation_flux": 1.0,
+                "star_temperature": 5778,
+                "star_mass": 1.0,
+                "star_radius": 1.0
+            }
+        )
 
-    assert response.status_code == 200
-    assert response.json()["model_status"] == "Not trained yet"
+        assert response.status_code == 200
+
+        data = response.json()
+
+        assert "prediction" in data
+        assert "classification" in data
+        assert data["model"] == "Random Forest"
