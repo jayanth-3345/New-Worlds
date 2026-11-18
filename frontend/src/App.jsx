@@ -30,14 +30,191 @@ const models = [
     name: "LLM Benchmark",
     short: "LLM",
     description: "Benchmark against ML, DL and QML",
-    technology: "Gemini / OpenAI",
-    status: "In Development",
+    technology: "Groq · GPT-OSS-20B",
+    status: "Integrated",
     color: "orange",
   },
 ];
 
 function App() {
   const [apiStatus, setApiStatus] = useState("Checking...");
+  const [planet, setPlanet] = useState({
+  planet_radius: 1.0,
+  equilibrium_temperature: 280.0,
+  insolation_flux: 1.0,
+  star_temperature: 5778.0,
+  star_mass: 1.0,
+  star_radius: 1.0,
+});
+
+const [prediction, setPrediction] = useState(null);
+const [loading, setLoading] = useState(false);
+const [predictionError, setPredictionError] = useState("");
+const [fluxInput, setFluxInput] = useState(
+  Array(201).fill(1).join(", ")
+);
+const [dlPrediction, setDlPrediction] = useState(null);
+const [dlLoading, setDlLoading] = useState(false);
+const [dlError, setDlError] = useState("");
+const [qmlTargets, setQmlTargets] = useState([
+  { name: "Kepler-22b", duration: 2, priority: 90 },
+  { name: "TOI-700d", duration: 1, priority: 80 },
+  { name: "TRAPPIST-1e", duration: 2, priority: 70 },
+  { name: "Proxima-b", duration: 1, priority: 60 },
+]);
+
+const [availableTime, setAvailableTime] = useState(3);
+const [qmlSteps, setQmlSteps] = useState(100);
+const [qmlResult, setQmlResult] = useState(null);
+const [qmlLoading, setQmlLoading] = useState(false);
+const [qmlError, setQmlError] = useState("");
+// LLM Benchmark state
+const [llmTargets, setLlmTargets] = useState([
+  { name: "Kepler-22b", duration: 2, priority: 90 },
+  { name: "TOI-700d", duration: 1, priority: 80 },
+  { name: "TRAPPIST-1e", duration: 2, priority: 70 },
+  { name: "Proxima-b", duration: 1, priority: 60 },
+]);
+
+const [llmResult, setLlmResult] = useState(null);
+const [llmLoading, setLlmLoading] = useState(false);
+const [llmError, setLlmError] = useState("");
+const handlePredict = async (event) => {
+  event.preventDefault();
+  setLoading(true);
+  setPrediction(null);
+  setPredictionError("");
+
+  try {
+    const response = await fetch("http://127.0.0.1:8000/planet/predict", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(
+        Object.fromEntries(
+          Object.entries(planet).map(([key, value]) => [key, Number(value)])
+        )
+      ),
+    });
+
+    if (!response.ok) {
+      throw new Error("Prediction request failed");
+    }
+
+    const data = await response.json();
+    setPrediction(data);
+  } catch (error) {
+    setPredictionError(error.message);
+  } finally {
+    setLoading(false);
+  }
+};
+const handleDLPredict = async (event) => {
+  event.preventDefault();
+  setDlLoading(true);
+  setDlPrediction(null);
+  setDlError("");
+
+  try {
+    const flux = fluxInput
+      .split(",")
+      .map((value) => Number(value.trim()));
+
+    if (flux.length !== 201 || flux.some((value) => !Number.isFinite(value))) {
+      throw new Error("Please enter exactly 201 valid numbers.");
+    }
+
+    const response = await fetch("http://127.0.0.1:8000/transit/predict", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ flux }),
+    });
+
+    if (!response.ok) {
+      throw new Error("Transit prediction failed.");
+    }
+
+    const data = await response.json();
+    setDlPrediction(data);
+  } catch (error) {
+    setDlError(error.message);
+  } finally {
+    setDlLoading(false);
+  }
+};
+   const handleQMLSchedule = async (event) => {
+  event.preventDefault();
+
+  setQmlLoading(true);
+  setQmlResult(null);
+  setQmlError("");
+
+  try {
+    const response = await fetch(
+      "http://127.0.0.1:8000/schedule/compare",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          targets: qmlTargets.map((target) => ({
+            ...target,
+            duration: Number(target.duration),
+            priority: Number(target.priority),
+          })),
+          available_time: Number(availableTime),
+          steps: Number(qmlSteps),
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error("QML scheduling request failed.");
+    }
+
+    const data = await response.json();
+    setQmlResult(data);
+  } catch (error) {
+    setQmlError(error.message);
+  } finally {
+    setQmlLoading(false);
+  }
+};
+   const handleLLMSchedule = async (event) => {
+  event.preventDefault();
+
+  setLlmLoading(true);
+  setLlmResult(null);
+  setLlmError("");
+
+  try {
+    const response = await fetch(
+      "http://127.0.0.1:8000/llm/schedule",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          targets: llmTargets.map((target) => ({
+            ...target,
+            duration: Number(target.duration),
+            priority: Number(target.priority),
+          })),
+          available_time: Number(availableTime),
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || "LLM scheduling failed.");
+    }
+
+    const data = await response.json();
+    setLlmResult(data);
+  } catch (error) {
+    setLlmError(error.message);
+  } finally {
+    setLlmLoading(false);
+  }
+};
 
 useEffect(() => {
   fetch("http://127.0.0.1:8000/health")
@@ -153,7 +330,342 @@ useEffect(() => {
           </div>
         </section>
 
-        <section className="benchmark-section" id="benchmark">
+<section className="prediction-section" id="qml-scheduler">
+  <div className="section-heading">
+    <div>
+      <p className="eyebrow">QUANTUM ML · PENNYLANE QAOA</p>
+      <h2>Observation Scheduler</h2>
+      <p>Optimize telescope observation targets within a limited time.</p>
+    </div>
+  </div>
+
+  <form
+    className="prediction-form"
+    onSubmit={handleQMLSchedule}
+  >
+    {qmlTargets.map((target, index) => (
+      <div className="qml-target" key={index}>
+        <h3>Target {index + 1}</h3>
+
+        <label>
+          Planet Name
+          <input
+            value={target.name}
+            onChange={(e) => {
+              const updated = [...qmlTargets];
+              updated[index] = {
+                ...target,
+                name: e.target.value,
+              };
+              setQmlTargets(updated);
+            }}
+            required
+          />
+        </label>
+
+        <label>
+          Observation Duration (hours)
+          <input
+            type="number"
+            min="0.01"
+            step="any"
+            value={target.duration}
+            onChange={(e) => {
+              const updated = [...qmlTargets];
+              updated[index] = {
+                ...target,
+                duration: e.target.value,
+              };
+              setQmlTargets(updated);
+            }}
+            required
+          />
+        </label>
+
+        <label>
+          Priority
+          <input
+            type="number"
+            min="0"
+            step="any"
+            value={target.priority}
+            onChange={(e) => {
+              const updated = [...qmlTargets];
+              updated[index] = {
+                ...target,
+                priority: e.target.value,
+              };
+              setQmlTargets(updated);
+            }}
+            required
+          />
+        </label>
+      </div>
+    ))}
+
+    <label>
+      Available Telescope Time (hours)
+      <input
+        type="number"
+        min="0"
+        step="any"
+        value={availableTime}
+        onChange={(e) => setAvailableTime(e.target.value)}
+        required
+      />
+    </label>
+
+    <label>
+      QAOA Optimization Steps
+      <input
+        type="number"
+        min="1"
+        max="500"
+        value={qmlSteps}
+        onChange={(e) => setQmlSteps(e.target.value)}
+        required
+      />
+    </label>
+
+    <button type="submit" disabled={qmlLoading}>
+      {qmlLoading ? "Optimizing Schedule..." : "Run Quantum Scheduler"}
+    </button>
+  </form>
+
+  {qmlError && (
+    <p className="prediction-error">{qmlError}</p>
+  )}
+
+  {qmlResult && (
+    <div className="prediction-result">
+      <h3>Observation Scheduling Results</h3>
+
+      <h4>Classical Scheduler</h4>
+      <p>Total Priority: {qmlResult.classical_result.total_priority}</p>
+      <p>
+        Observation Time:{" "}
+        {qmlResult.classical_result.total_observation_time} hours
+      </p>
+
+      <h4>Quantum Scheduler — QAOA</h4>
+      <p>Total Priority: {qmlResult.quantum_result.total_priority}</p>
+      <p>
+        Observation Time:{" "}
+        {qmlResult.quantum_result.total_observation_time} hours
+      </p>
+      <p>
+        Matches Classical:{" "}
+        {qmlResult.comparison.qaoa_matches_classical ? "Yes" : "No"}
+      </p>
+
+      <h4>Quantum Scheduler — VQE</h4>
+      <p>Total Priority: {qmlResult.vqe_result.total_priority}</p>
+      <p>
+        Observation Time:{" "}
+        {qmlResult.vqe_result.total_observation_time} hours
+      </p>
+      <p>
+        Matches Classical:{" "}
+        {qmlResult.comparison.vqe_matches_classical ? "Yes" : "No"}
+      </p>
+
+      <h4>VQE Selected Targets</h4>
+      {qmlResult.vqe_result.selected_targets.map((target) => (
+        <p key={target.name}>
+          {target.name} — {target.duration} hours · Priority {target.priority}
+        </p>
+      ))}
+
+      <p>Quantum advantage claimed: No</p>
+    </div>
+  )}
+</section>
+
+        <section className="prediction-section" id="prediction">
+  <div className="section-heading">
+    <div>
+      <p className="eyebrow">MACHINE LEARNING · RANDOM FOREST</p>
+      <h2>Exoplanet Habitability Predictor</h2>
+    </div>
+  </div>
+
+  <form onSubmit={handlePredict} className="prediction-form">
+    {[
+      ["planet_radius", "Planet Radius (Earth radii)"],
+      ["equilibrium_temperature", "Equilibrium Temperature (K)"],
+      ["insolation_flux", "Insolation Flux"],
+      ["star_temperature", "Star Temperature (K)"],
+      ["star_mass", "Star Mass (Solar masses)"],
+      ["star_radius", "Star Radius (Solar radii)"],
+    ].map(([key, label]) => (
+      <label key={key}>
+        {label}
+        <input
+          type="number"
+          step="any"
+          min="0.000001"
+          required
+          value={planet[key]}
+          onChange={(e) =>
+            setPlanet({ ...planet, [key]: e.target.value })
+          }
+        />
+      </label>
+    ))}
+
+    <button type="submit" disabled={loading}>
+      {loading ? "Analyzing Planet..." : "Predict Habitability"}
+    </button>
+  </form>
+
+  {prediction && (
+    <div className="prediction-result">
+      <h3>{prediction.classification}</h3>
+      <p>Model: {prediction.model}</p>
+      <p>{prediction.disclaimer}</p>
+    </div>
+  )}
+
+  {predictionError && (
+    <p className="prediction-error">{predictionError}</p>
+  )}
+</section>
+
+<section className="prediction-section" id="dl-prediction">
+  <div className="section-heading">
+    <div>
+      <p className="eyebrow">DEEP LEARNING · PYTORCH CNN</p>
+      <h2>Transit Signal Classifier</h2>
+    </div>
+  </div>
+
+  <form onSubmit={handleDLPredict} className="prediction-form">
+    <label>
+      Telescope Flux Measurements (exactly 201 comma-separated values)
+      <textarea
+        rows="6"
+        value={fluxInput}
+        onChange={(e) => setFluxInput(e.target.value)}
+        required
+      />
+    </label>
+
+    <button type="submit" disabled={dlLoading}>
+      {dlLoading ? "Analyzing Signal..." : "Classify Transit Signal"}
+    </button>
+  </form>
+
+  {dlPrediction && (
+    <div className="prediction-result">
+      <h3>{dlPrediction.classification}</h3>
+      <p>Prediction: {dlPrediction.prediction}</p>
+      <p>Confidence: {(dlPrediction.confidence * 100).toFixed(2)}%</p>
+      <p>Test with real telescope observations for meaningful evaluation.</p>
+    </div>
+  )}
+
+  {dlError && <p className="prediction-error">{dlError}</p>}
+</section>
+<section className="prediction-section" id="llm-scheduler">
+  <div className="section-heading">
+    <div>
+      <p className="eyebrow">LARGE LANGUAGE MODEL · GROQ</p>
+      <h2>AI Observation Scheduler</h2>
+      <p>Use GPT-OSS-20B to select observation targets within telescope time limits.</p>
+    </div>
+  </div>
+
+  <form className="prediction-form" onSubmit={handleLLMSchedule}>
+    {llmTargets.map((target, index) => (
+      <div className="qml-target" key={index}>
+        <h3>Target {index + 1}</h3>
+
+        <label>
+          Planet Name
+          <input
+            value={target.name}
+            onChange={(e) => {
+              const updated = [...llmTargets];
+              updated[index] = { ...target, name: e.target.value };
+              setLlmTargets(updated);
+            }}
+            required
+          />
+        </label>
+
+        <label>
+          Observation Duration (hours)
+          <input
+            type="number"
+            min="0.01"
+            step="any"
+            value={target.duration}
+            onChange={(e) => {
+              const updated = [...llmTargets];
+              updated[index] = { ...target, duration: e.target.value };
+              setLlmTargets(updated);
+            }}
+            required
+          />
+        </label>
+
+        <label>
+          Priority
+          <input
+            type="number"
+            min="0"
+            step="any"
+            value={target.priority}
+            onChange={(e) => {
+              const updated = [...llmTargets];
+              updated[index] = { ...target, priority: e.target.value };
+              setLlmTargets(updated);
+            }}
+            required
+          />
+        </label>
+      </div>
+    ))}
+
+    <label>
+      Available Telescope Time (hours)
+      <input
+        type="number"
+        min="0"
+        step="any"
+        value={availableTime}
+        onChange={(e) => setAvailableTime(e.target.value)}
+        required
+      />
+    </label>
+
+    <button type="submit" disabled={llmLoading}>
+      {llmLoading ? "Groq AI Scheduling..." : "Run LLM Scheduler"}
+    </button>
+  </form>
+
+  {llmError && (
+    <p className="prediction-error">{llmError}</p>
+  )}
+
+  {llmResult && (
+    <div className="prediction-result">
+      <h3>Groq Scheduling Results</h3>
+      <p>Model: {llmResult.model}</p>
+      <p>Selected Targets:</p>
+
+      {llmResult.selected_targets.map((name) => (
+        <p key={name}>✦ {name}</p>
+      ))}
+
+      <p>Total Observation Time: {llmResult.total_duration} hours</p>
+      <p>Total Priority: {llmResult.total_priority}</p>
+      <p>Available Time: {llmResult.available_time} hours</p>
+      <p>Reasoning: {llmResult.reasoning}</p>
+    </div>
+  )}
+</section>
+<section className="benchmark-section" id="benchmark">
           <div>
             <p className="eyebrow">PERFORMANCE EVALUATION</p>
             <h2>Model Benchmarking</h2>

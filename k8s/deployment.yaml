@@ -1,0 +1,63 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: new-worlds-backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: new-worlds-backend
+  template:
+    metadata:
+      labels:
+        app: new-worlds-backend
+    spec:
+      containers:
+        - name: backend
+          image: jayydoc/new-worlds-backend:v1
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: new-worlds-backend-service
+spec:
+  selector:
+    app: new-worlds-backend
+  ports:
+    - port: 8000
+      targetPort: 8000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: new-worlds-frontend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: new-worlds-frontend
+  template:
+    metadata:
+      labels:
+        app: new-worlds-frontend
+    spec:
+      containers:
+        - name: frontend
+          image: jayydoc/new-worlds-frontend:v1
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 5173
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: new-worlds-frontend-service
+spec:
+  selector:
+    app: new-worlds-frontend
+  ports:
+    - port: 5173
+      targetPort: 5173
