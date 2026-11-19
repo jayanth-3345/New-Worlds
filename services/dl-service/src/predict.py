@@ -1,70 +1,51 @@
 from pathlib import Path
 import numpy as np
 import torch
-
 from model import TransitCNN
+from lstm_model import TransitLSTM
 
 BASE = Path(__file__).resolve().parents[1]
-MODEL_PATH = BASE / "models" / "transit_cnn.pth"
+DEVICE = torch.device("cpu")
 
-DEVICE = torch.device(
-    "mps" if torch.backends.mps.is_available() else "cpu"
-)
+cnn = TransitCNN(num_classes=2).to(DEVICE)
+cnn.load_state_dict(torch.load(BASE / "models/transit_cnn.pth", map_location=DEVICE, weights_only=True))
+cnn.eval()
+
+lstm = TransitLSTM(num_classes=2, hidden_size=64).to(DEVICE)
+lstm.load_state_dict(torch.load(BASE / "models/transit_lstm.pth", map_location=DEVICE, weights_only=True))
+lstm.eval()
 
 THRESHOLD = 0.56
 
-model = TransitCNN(num_classes=2).to(DEVICE)
-
-model.load_state_dict(
-    torch.load(MODEL_PATH, map_location=DEVICE, weights_only=True)
-)
-
-model.eval()
-
-
-def predict_transit(flux):
+def predict_model(flux, model, name):
     flux = np.asarray(flux, dtype=np.float32)
-
-    if flux.shape != (201,):
-        raise ValueError("Exactly 201 flux values are required.")
-
-    if not np.isfinite(flux).all():
-        raise ValueError("Flux values must be finite.")
-
+    if flux.shape != (201,) or not np.isfinite(flux).all():
+        raise ValueError("Exactly 201 finite flux values are required.")
     if np.all(flux == 0):
-        return {
-            "prediction": 0,
-            "classification": "NO_SIGNAL",
-            "confidence": 1.0
-        }
+        return {"model": name, "prediction": 0, "classification": "NO_SIGNAL", "confidence": 1.0}
 
     median = np.median(flux)
-
     if median <= 0:
         raise ValueError("Flux median must be positive.")
 
     normalized = (flux / median - 1.0) * 1000.0
-
-    tensor = torch.tensor(
-        normalized, dtype=torch.float32
-    ).reshape(1, 1, 201).to(DEVICE)
+    tensor = torch.tensor(normalized, dtype=torch.float32).reshape(1, 1, 201).to(DEVICE)
 
     with torch.no_grad():
         probabilities = torch.softmax(model(tensor), dim=1)[0]
 
-    planet_probability = probabilities[1].item()
-
-    if planet_probability >= THRESHOLD:
-        classification = "PLANET"
-        confidence = planet_probability
-        prediction = 2
-    else:
-        classification = "FALSE_POSITIVE"
-        confidence = 1 - planet_probability
-        prediction = 1
+    probability = probabilities[1].item()
+    prediction = 2 if probability >= THRESHOLD else 1
 
     return {
+        "model": name,
         "prediction": prediction,
-        "classification": classification,
-        "confidence": round(confidence, 4)
+        "classification": "PLANET" if prediction == 2 else "FALSE_POSITIVE",
+        "confidence": round(max(probability, 1 - probability), 4)
     }
+
+def predict_transit(flux):
+    return predict_model(flux, cnn, "TransitCNN")
+
+def predict_transit_lstm(flux):
+    return predict_model(flux, lstm, "TransitLSTM")

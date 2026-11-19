@@ -1,0 +1,12 @@
+.git
+.venv
+venv
+__pycache__
+*.pyc
+.pytest_cache
+.DS_Store
+frontend/node_modules
+frontend/dist
+services/dl-service/datasets
+services/dl-service/experiments
+notebooks

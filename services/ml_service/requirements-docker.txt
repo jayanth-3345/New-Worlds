@@ -1,0 +1,8 @@
+fastapi
+uvicorn
+pydantic
+pandas
+numpy
+scikit-learn
+skops
+xgboost==3.4.1

@@ -50,12 +50,14 @@ function App() {
 const [prediction, setPrediction] = useState(null);
 const [loading, setLoading] = useState(false);
 const [predictionError, setPredictionError] = useState("");
+const [xgbPrediction, setXgbPrediction] = useState(null);
 const [fluxInput, setFluxInput] = useState(
   Array(201).fill(1).join(", ")
 );
 const [dlPrediction, setDlPrediction] = useState(null);
 const [dlLoading, setDlLoading] = useState(false);
 const [dlError, setDlError] = useState("");
+const [lstmPrediction, setLstmPrediction] = useState(null);
 const [qmlTargets, setQmlTargets] = useState([
   { name: "Kepler-22b", duration: 2, priority: 90 },
   { name: "TOI-700d", duration: 1, priority: 80 },
@@ -83,35 +85,50 @@ const handlePredict = async (event) => {
   event.preventDefault();
   setLoading(true);
   setPrediction(null);
+  setXgbPrediction(null);
   setPredictionError("");
 
   try {
-    const response = await fetch("http://127.0.0.1:8000/planet/predict", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(
-        Object.fromEntries(
-          Object.entries(planet).map(([key, value]) => [key, Number(value)])
-        )
-      ),
-    });
+    const payload = Object.fromEntries(
+      Object.entries(planet).map(([key, value]) => [key, Number(value)])
+    );
 
-    if (!response.ok) {
-      throw new Error("Prediction request failed");
+    const [rfResponse, xgbResponse] = await Promise.all([
+      fetch("http://127.0.0.1:8000/planet/predict", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      }),
+      fetch("http://127.0.0.1:8000/planet/predict/xgboost", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      }),
+    ]);
+
+    if (!rfResponse.ok || !xgbResponse.ok) {
+      throw new Error("One or more planet prediction requests failed.");
     }
 
-    const data = await response.json();
-    setPrediction(data);
+    const [rfData, xgbData] = await Promise.all([
+      rfResponse.json(),
+      xgbResponse.json(),
+    ]);
+
+    setPrediction(rfData);
+    setXgbPrediction(xgbData);
   } catch (error) {
     setPredictionError(error.message);
   } finally {
     setLoading(false);
   }
 };
+
 const handleDLPredict = async (event) => {
   event.preventDefault();
   setDlLoading(true);
   setDlPrediction(null);
+  setLstmPrediction(null);
   setDlError("");
 
   try {
@@ -123,25 +140,37 @@ const handleDLPredict = async (event) => {
       throw new Error("Please enter exactly 201 valid numbers.");
     }
 
-    const response = await fetch("http://127.0.0.1:8000/transit/predict", {
+    const payload = JSON.stringify({ flux });
+    const options = {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ flux }),
-    });
+      body: payload,
+    };
 
-    if (!response.ok) {
-      throw new Error("Transit prediction failed.");
+    const [cnnResponse, lstmResponse] = await Promise.all([
+      fetch("http://127.0.0.1:8000/transit/predict", options),
+      fetch("http://127.0.0.1:8000/transit/predict/lstm", options),
+    ]);
+
+    if (!cnnResponse.ok || !lstmResponse.ok) {
+      throw new Error("One or more transit prediction requests failed.");
     }
 
-    const data = await response.json();
-    setDlPrediction(data);
+    const [cnnData, lstmData] = await Promise.all([
+      cnnResponse.json(),
+      lstmResponse.json(),
+    ]);
+
+    setDlPrediction(cnnData);
+    setLstmPrediction(lstmData);
   } catch (error) {
     setDlError(error.message);
   } finally {
     setDlLoading(false);
   }
 };
-   const handleQMLSchedule = async (event) => {
+
+const handleQMLSchedule = async (event) => {
   event.preventDefault();
 
   setQmlLoading(true);
@@ -526,6 +555,14 @@ useEffect(() => {
     </div>
   )}
 
+  {xgbPrediction && (
+    <div className="prediction-result">
+      <h3>XGBoost Result</h3>
+      <p>Classification: {xgbPrediction.classification}</p>
+      <p>Model: {xgbPrediction.model}</p>
+      <p>{xgbPrediction.disclaimer}</p>
+    </div>
+  )}
   {predictionError && (
     <p className="prediction-error">{predictionError}</p>
   )}
@@ -564,6 +601,14 @@ useEffect(() => {
     </div>
   )}
 
+  {lstmPrediction && (
+    <div className="prediction-result">
+      <h3>TransitLSTM Result</h3>
+      <p>Classification: {lstmPrediction.classification}</p>
+      <p>Prediction: {lstmPrediction.prediction}</p>
+      <p>Confidence: {(lstmPrediction.confidence * 100).toFixed(2)}%</p>
+    </div>
+  )}
   {dlError && <p className="prediction-error">{dlError}</p>}
 </section>
 <section className="prediction-section" id="llm-scheduler">

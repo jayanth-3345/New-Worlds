@@ -1,22 +1,34 @@
 from pathlib import Path
 
+import joblib
+import numpy as np
 import pandas as pd
 import skops.io as sio
+
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
+from xgboost import XGBClassifier
 
 app = FastAPI(
     title="New Worlds - ML Service",
-    description="Exoplanet Habitability Classification",
-    version="2.0.0"
+    description="Random Forest and XGBoost Exoplanet Classification",
+    version="3.0.0"
 )
 
-MODEL_PATH = (
-    Path(__file__).resolve().parents[2]
-    / "models/model.skops"
-)
+ROOT = Path(__file__).resolve().parents[2]
 
-model = None
+RF_PATH = ROOT / "models/model.skops"
+XGB_PATH = ROOT / "models/xgboost_model.ubj"
+IMPUTER_PATH = ROOT / "models/xgboost_imputer.joblib"
+
+FEATURES = [
+    "pl_rade", "pl_eqt", "pl_insol",
+    "st_teff", "st_mass", "st_rad"
+]
+
+rf_model = None
+xgb_model = None
+xgb_imputer = None
 
 
 class PlanetData(BaseModel):
@@ -29,54 +41,33 @@ class PlanetData(BaseModel):
 
 
 @app.on_event("startup")
-def load_model():
-    global model
+def load_models():
+    global rf_model, xgb_model, xgb_imputer
 
-    if not MODEL_PATH.exists():
-        raise RuntimeError(f"Model not found: {MODEL_PATH}")
-
-    model = sio.load(
-        MODEL_PATH,
-        trusted=[
-            "numpy.dtype",
-            "sklearn.tree._tree.Tree"
-        ]
+    rf_model = sio.load(
+        RF_PATH,
+        trusted=["numpy.dtype", "sklearn.tree._tree.Tree"]
     )
 
+    xgb_model = XGBClassifier()
+    xgb_model.load_model(str(XGB_PATH))
 
-@app.get("/")
-def home():
-    return {
-        "service": "ML Service",
-        "message": "Exoplanet classification service initialized"
-    }
+    xgb_imputer = joblib.load(IMPUTER_PATH)
 
 
-@app.get("/health")
-def health():
-    return {
-        "service": "ML",
-        "status": "healthy",
-        "model_loaded": model is not None
-    }
-
-
-@app.post("/planet/predict")
-def predict_planet(planet: PlanetData):
-    if model is None:
-        raise HTTPException(status_code=503, detail="Model not loaded")
-
-    features = pd.DataFrame([{
+def get_features(planet):
+    return pd.DataFrame([{
         "pl_rade": planet.planet_radius,
         "pl_eqt": planet.equilibrium_temperature,
         "pl_insol": planet.insolation_flux,
         "st_teff": planet.star_temperature,
         "st_mass": planet.star_mass,
         "st_rad": planet.star_radius
-    }])
+    }], columns=FEATURES)
 
-    prediction = int(model.predict(features)[0])
 
+def result(planet, prediction, model_name):
+    prediction = int(prediction)
     return {
         "planet_data": planet.model_dump(),
         "prediction": prediction,
@@ -84,6 +75,45 @@ def predict_planet(planet: PlanetData):
             "Potentially Habitable" if prediction == 1
             else "Not Classified as Potentially Habitable"
         ),
-        "model": "Random Forest",
-        "disclaimer": "Prediction reflects catalog-derived training labels, not confirmation of life or actual habitability."
+        "model": model_name,
+        "disclaimer": (
+            "Prediction reflects catalog-derived training labels, "
+            "not confirmation of life or actual habitability."
+        )
     }
+
+
+@app.get("/")
+def home():
+    return {
+        "service": "ML Service",
+        "models": ["Random Forest", "XGBoost"]
+    }
+
+
+@app.get("/health")
+def health():
+    return {
+        "status": "healthy",
+        "random_forest_loaded": rf_model is not None,
+        "xgboost_loaded": xgb_model is not None
+    }
+
+
+@app.post("/planet/predict")
+def predict_random_forest(planet: PlanetData):
+    if rf_model is None:
+        raise HTTPException(status_code=503, detail="Random Forest not loaded")
+
+    prediction = rf_model.predict(get_features(planet))[0]
+    return result(planet, prediction, "Random Forest")
+
+
+@app.post("/planet/predict/xgboost")
+def predict_xgboost(planet: PlanetData):
+    if xgb_model is None or xgb_imputer is None:
+        raise HTTPException(status_code=503, detail="XGBoost not loaded")
+
+    features = xgb_imputer.transform(get_features(planet))
+    prediction = xgb_model.predict(features)[0]
+    return result(planet, prediction, "XGBoost")

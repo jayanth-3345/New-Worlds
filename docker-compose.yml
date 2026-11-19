@@ -6,6 +6,16 @@ services:
     container_name: new-worlds-backend
     ports:
       - "8000:8000"
+    environment:
+      ML_SERVICE_URL: http://ml-service:8002/planet/predict
+      DL_SERVICE_URL: http://dl-service:8003/transit/predict
+      QML_SERVICE_URL: http://qml-service:8004/schedule/compare
+      LLM_SERVICE_URL: http://llm-service:8005/schedule
+    depends_on:
+      - ml-service
+      - dl-service
+      - qml-service
+      - llm-service
 
   frontend:
     build:
@@ -16,3 +26,38 @@ services:
       - "5173:5173"
     depends_on:
       - backend
+
+  ml-service:
+    build:
+      context: .
+      dockerfile: services/ml_service/Dockerfile
+    container_name: new-worlds-ml
+    ports:
+      - "8002:8002"
+
+  dl-service:
+    build:
+      context: .
+      dockerfile: services/dl-service/Dockerfile
+    container_name: new-worlds-dl
+    ports:
+      - "8003:8003"
+
+  qml-service:
+    build:
+      context: .
+      dockerfile: services/qml-service/Dockerfile
+    container_name: new-worlds-qml
+    ports:
+      - "8004:8004"
+
+  llm-service:
+    build:
+      context: .
+      dockerfile: services/llm-benchmark-service/Dockerfile
+    container_name: new-worlds-llm
+    ports:
+      - "8005:8005"
+    environment:
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      GROQ_MODEL: ${GROQ_MODEL:-openai/gpt-oss-20b}

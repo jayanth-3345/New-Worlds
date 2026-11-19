@@ -1,3 +1,4 @@
+import os
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
@@ -17,10 +18,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-ML_SERVICE_URL = "http://127.0.0.1:8002/planet/predict"
-DL_SERVICE_URL = "http://127.0.0.1:8003/transit/predict"
-QML_SERVICE_URL = "http://127.0.0.1:8004/schedule/compare"
-LLM_SERVICE_URL = "http://127.0.0.1:8005/schedule"
+ML_SERVICE_URL = os.getenv("ML_SERVICE_URL", "http://127.0.0.1:8002/planet/predict")
+DL_SERVICE_URL = os.getenv("DL_SERVICE_URL", "http://127.0.0.1:8003/transit/predict")
+QML_SERVICE_URL = os.getenv("QML_SERVICE_URL", "http://127.0.0.1:8004/schedule/compare")
+LLM_SERVICE_URL = os.getenv("LLM_SERVICE_URL", "http://127.0.0.1:8005/schedule")
 
 
 class PlanetData(BaseModel):
@@ -129,3 +130,40 @@ async def llm_schedule(request: ScheduleData):
                 status_code=502,
                 detail=f"LLM service error: {str(error)}"
             )
+@app.post("/planet/predict/xgboost")
+async def predict_planet_xgboost(planet: PlanetData):
+    try:
+        xgboost_url = ML_SERVICE_URL.replace(
+            "/planet/predict", "/planet/predict/xgboost"
+        )
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(
+                xgboost_url,
+                json=planet.model_dump()
+            )
+        response.raise_for_status()
+        return response.json()
+    except httpx.HTTPError as error:
+        raise HTTPException(
+            status_code=502,
+            detail=f"XGBoost service error: {str(error)}"
+        )
+
+@app.post("/transit/predict/lstm")
+async def predict_transit_lstm(data: TransitData):
+    try:
+        lstm_url = DL_SERVICE_URL.replace(
+            "/transit/predict", "/transit/predict/lstm"
+        )
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(
+                lstm_url,
+                json=data.model_dump()
+            )
+        response.raise_for_status()
+        return response.json()
+    except httpx.HTTPError as error:
+        raise HTTPException(
+            status_code=502,
+            detail=f"LSTM service error: {str(error)}"
+        )
